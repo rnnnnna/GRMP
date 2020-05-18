@@ -1,0 +1,231 @@
+
+```{r warning=FALSE}
+site="https://mirrors.tuna.tsinghua.edu.cn/CRAN"
+package_list <- c("reshape2","ggplot2","devtools","bindrcpp", "VennDiagram",
+                  "ggthemes","agricolae","dplyr","igraph", "psych","sqldf","tidyverse")
+for(p in package_list){
+  if(!suppressWarnings(suppressMessages(require(p, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)))){
+    install.packages(p, repos=site)
+    suppressWarnings(suppressMessages(library(p, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)))
+  }
+}
+package_list <- c("digest","AnnotationDbi", "impute", "GO.db", "preprocessCore","WGCNA","multtest")
+for(p in package_list){
+  if(!suppressWarnings(suppressMessages(require(p, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)))){
+    source("https://bioconductor.org/biocLite.R")
+    biocLite(p)
+    suppressWarnings(suppressMessages(library(p, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)))
+  }
+}
+```
+Setting parameters
+```{r}
+#functions provided by CHEN Liang.
+source("matrix2igraph.R")
+source("net_pro.R")
+source("node_pro.R")
+```
+
+
+```{r}
+otu_sample_file <- "data_fig6b-g,suppfigS12_otutab.txt"
+otu_tax_file<-"data_fig6b-g,suppfigS12_taxonomy.txt"
+design_file<-"data_fig6b-g,suppfigS12_design.txt"
+r.threshold=0.65
+p.threshold=0.01
+size=3
+gcol=2
+maxtaxnum=5
+glab=5
+
+```
+
+Loading files
+```{r}
+otu <- read.table(otu_sample_file, header=T, row.names= 1, sep="\t", comment.char="") 
+otu<-t(otu)
+otu <- otu[,colSums(otu)/sum(otu)>=(0.01/100)]
+otu_tax <- read.table(otu_tax_file, header=T, row.names= 1, sep="\t", comment.char="")
+design <- read.table(design_file, header=T, row.names= 1, sep="\t")
+otu_tax<-as.data.frame(otu_tax[colnames(otu),])
+otu_abundance <- colSums(otu)
+otu_pro <- cbind(otu_tax,otu_abundance)
+dir.create("network_results")
+
+```
+
+Construct subgraph 
+```{r}
+# subgraph
+all_tax<-as.character(otu_pro[,gcol])
+fre.tax <- names(sort(table(all_tax),decreasing =T)[1:maxtaxnum])
+all_tax[!(all_tax %in% fre.tax)]<-"Rare_groups"
+col_database<-as.data.frame(cbind(unique(all_tax),rainbow(length(unique(all_tax)))))
+colnames(col_database)<-c("tax","col")
+Rare_groups_col<-as.character(col_database[col_database$tax=="Rare_groups",]$col)
+
+for (i in levels(design$SoilType)){
+  sub_design<-design[design$SoilType==i,]
+  subgraph_mat<-otu[rownames(sub_design),]
+  subgraph_mat<-subgraph_mat[,colSums(subgraph_mat)>0]
+  igraph<-matrix2igraph(subgraph_mat,r.threshold,p.threshold)
+  igraph.weight <- E(igraph)$weight
+  igraph.otu <- as.data.frame(otu_pro[V(igraph)$name,]) 
+  set.seed(88)
+  eval(parse(text=paste0(i,'_igraph <- igraph')))
+  
+}
+#subgraph network properties
+DM_igraph_net_pro<-net_pro(DM_igraph)
+write.csv(DM_igraph_net_pro,"network_results/DM_igraph.net.pro.csv")
+KL_igraph_net_pro<-net_pro(KL_igraph)
+write.csv(KL_igraph_net_pro,"network_results/KL_igraph.net.pro.csv")
+XL_igraph_net_pro<-net_pro(XL_igraph)
+write.csv(XL_igraph_net_pro,"network_results/XL_igraph.net.pro.csv")
+
+# subgraph network nodes properties
+DM_igraph_node_pro<-as.data.frame(node_pro(DM_igraph))
+DM_igraph.otu <- as.data.frame(otu_pro[V(DM_igraph)$name,]) 
+abu=dplyr::select(DM_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+DM_igraph_node_pro["name"]=row.names(DM_igraph_node_pro)
+DM_node=left_join(abu,DM_igraph_node_pro)
+write.csv(DM_node,"network_results/DM_igraph.node.pro.csv")
+
+# subgraph network nodes properties
+KL_igraph_node_pro<-as.data.frame(node_pro(KL_igraph))
+KL_igraph.otu <- as.data.frame(otu_pro[V(KL_igraph)$name,])
+abu=dplyr::select(KL_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+KL_igraph_node_pro["name"]=row.names(KL_igraph_node_pro)
+KL_node=left_join(abu,KL_igraph_node_pro)
+write.csv(KL_node,"network_results/KL_igraph.node.pro.csv")
+
+# subgraph network nodes properties
+XL_igraph_node_pro<-as.data.frame(node_pro(XL_igraph))
+XL_igraph.otu <- as.data.frame(otu_pro[V(XL_igraph)$name,]) 
+abu=dplyr::select(XL_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+XL_igraph_node_pro["name"]=row.names(XL_igraph_node_pro)
+XL_node=left_join(abu,XL_igraph_node_pro)
+write.csv(XL_node,"network_results/XL_igraph.node.pro.csv")
+
+##the numbers of edges of subnetwork
+DM_edgenum<-length(E(DM_igraph))
+KL_edgenum<-length(E(KL_igraph))
+XL_edgenum<-length(E(XL_igraph))
+
+# igraph object output
+write_graph(DM_igraph, "network_results/DM_igraph_edgelist.txt", format="edgelist")
+write_graph(DM_igraph, "network_results/DM_igraph_col.txt", format="ncol")#含节点名字
+
+write_graph(KL_igraph, "network_results/KL_igraph_edgelist.txt", format="edgelist")
+write_graph(KL_igraph, "network_results/KL_igraph_col.txt", format="ncol")#含节点名字
+
+write_graph(XL_igraph, "network_results/XL_igraph_edgelist.txt", format="edgelist")
+write_graph(XL_igraph, "network_results/XL_igraph_col.txt", format="ncol")#含节点名字
+
+```
+
+
+reLoading files
+
+```{r}
+otu <- read.table(otu_sample_file, header=T, row.names= 1, sep="\t", comment.char="") 
+otu<-t(otu)
+otu <- otu[,colSums(otu)/sum(otu)>=(0.01/100)]
+otu_tax <- read.table(otu_tax_file, header=T, row.names= 1, sep="\t", comment.char="")
+design <- read.table(design_file, header=T, row.names= 1, sep="\t")
+
+otu_tax<-as.data.frame(otu_tax[colnames(otu),])
+otu_abundance <- colSums(otu)
+otu_pro <- cbind(otu_tax,otu_abundance)
+
+```
+
+Construct subgraph 
+```{r}
+# subgraph
+all_tax<-as.character(otu_pro[,gcol])
+fre.tax <- names(sort(table(all_tax),decreasing =T)[1:maxtaxnum])
+all_tax[!(all_tax %in% fre.tax)]<-"Rare_groups"
+col_database<-as.data.frame(cbind(unique(all_tax),rainbow(length(unique(all_tax)))))
+colnames(col_database)<-c("tax","col")
+Rare_groups_col<-as.character(col_database[col_database$tax=="Rare_groups",]$col)
+
+for (i in levels(design$Time)){
+  sub_design<-design[design$Time==i,]
+  subgraph_mat<-otu[rownames(sub_design),]
+  subgraph_mat<-subgraph_mat[,colSums(subgraph_mat)>0]
+  igraph<-matrix2igraph(subgraph_mat,r.threshold,p.threshold)
+  igraph.weight <- E(igraph)$weight
+  igraph.otu <- as.data.frame(otu_pro[V(igraph)$name,]) 
+  set.seed(88)
+  eval(parse(text=paste0(i,'_igraph <- igraph')))
+  
+}
+# subgraph network properties
+Mar_igraph_net_pro<-net_pro(Mar_igraph)
+write.csv(Mar_igraph_net_pro,"network_results/Mar_igraph.net.pro.csv")
+Apr_igraph_net_pro<-net_pro(Apr_igraph)
+write.csv(Apr_igraph_net_pro,"network_results/Apr_igraph.net.pro.csv")
+May_igraph_net_pro<-net_pro(May_igraph)
+write.csv(May_igraph_net_pro,"network_results/May_igraph.net.pro.csv")
+
+# subgraph network nodes properties
+Mar_igraph_node_pro<-as.data.frame(node_pro(Mar_igraph))
+Mar_igraph.otu <- as.data.frame(otu_pro[V(Mar_igraph)$name,])
+abu=dplyr::select(Mar_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+Mar_igraph_node_pro["name"]=row.names(Mar_igraph_node_pro)
+Mar_node=left_join(abu,Mar_igraph_node_pro)
+write.csv(Mar_node,"network_results/Mar_igraph.node.pro.csv")
+
+#subgraph network nodes properties
+Apr_igraph_node_pro<-as.data.frame(node_pro(Apr_igraph))
+Apr_igraph.otu <- as.data.frame(otu_pro[V(Apr_igraph)$name,]) 
+abu=dplyr::select(Apr_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+Apr_igraph_node_pro["name"]=row.names(Apr_igraph_node_pro)
+Apr_node=left_join(abu,Apr_igraph_node_pro)
+write.csv(Apr_node,"network_results/Apr_igraph.node.pro.csv")
+
+# subgraph network nodes properties
+May_igraph_node_pro<-as.data.frame(node_pro(May_igraph))
+May_igraph.otu <- as.data.frame(otu_pro[V(May_igraph)$name,])
+abu=dplyr::select(May_igraph.otu,Phylum,Genus,otu_abundance)
+abu["otu_abundance_log"]=(otu_baundance1=log(as.numeric(abu$otu_abundance),10)*size)
+abu["name"]=row.names(abu)
+May_igraph_node_pro["name"]=row.names(May_igraph_node_pro)
+May_node=left_join(abu,May_igraph_node_pro)
+write.csv(May_node,"network_results/May_igraph.node.pro.csv")
+
+##the numbers of edges of Mar network
+Mar_edgenum<-length(E(Mar_igraph))
+Apr_edgenum<-length(E(Apr_igraph))
+May_edgenum<-length(E(May_igraph))
+
+# igraph object output
+write_graph(Mar_igraph, "network_results/Mar_igraph_edgelist.txt", format="edgelist")
+write_graph(Mar_igraph, "network_results/Mar_igraph_col.txt", format="ncol")
+
+write_graph(Apr_igraph, "network_results/Apr_igraph_edgelist.txt", format="edgelist")
+write_graph(Apr_igraph, "network_results/Apr_igraph_col.txt", format="ncol")
+
+write_graph(May_igraph, "network_results/May_igraph_edgelist.txt", format="edgelist")
+write_graph(May_igraph, "network_results/May_igraph_col.txt", format="ncol")
+
+```
+
+```{r}
+#Here, we thank CHEN Liang for technical assistance.
+#Handoff to Cytoscap
+```
+
+	
+	
